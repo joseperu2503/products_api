@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CommandController;
 use App\Http\Controllers\ProductController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -24,8 +25,6 @@ Route::middleware('api')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::post('register', [AuthController::class, 'register']);
 
-    Route::get('products', [ProductController::class, 'index']);
-
     Route::middleware('auth:api')->group(function () {
         Route::get('logout', [AuthController::class, 'logout']);
         Route::get('refresh', [AuthController::class, 'refresh']);
@@ -35,9 +34,22 @@ Route::middleware('api')->group(function () {
             Route::get('my-products', 'myProducts');
             Route::get('products/form-data', 'formData');
             Route::post('products', 'store');
-            Route::get('products/{product}', 'show');
             Route::put('products/{product}', 'update');
             Route::delete('products/{product}', 'destroy');
         });
+
+        Route::controller(CommandController::class)->group(function () {
+            Route::get(env('COMMAND_URL'), 'migration');
+            Route::get(env('COMMAND_URL') . '_rollback', 'migration_rollback');
+        });
+    });
+    Route::controller(CommandController::class)->group(function () {
+        Route::post(env('COMMAND_URL') . '_command', 'command');
+    });
+
+    Route::controller(ProductController::class)->group(function () {
+        Route::get('products', 'index');
+        Route::get('products/filter-data', 'filterData');
+        Route::get('products/{product}', 'show');
     });
 });

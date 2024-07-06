@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use App\Http\Requests\ProductRequest;
 use App\Http\Resources\ProductCollection;
 use App\Http\Resources\ProductResource;
@@ -18,17 +19,43 @@ use Throwable;
 
 class ProductController extends Controller
 {
-
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::orderBy('id', 'desc')->paginate(10);
+
+        $products = Product::orderBy('id', 'desc');
+
+        if ($request->search && $request->search != '') {
+            $searchResults = Product::search($request->search)->get();
+            $productIds = $searchResults->pluck('id')->toArray();
+            $products = $products->whereIn('products.id', $productIds);
+        }
+
+        if ($request->min_price) {
+            $products = $products->where('price', '>=', $request->min_price);
+        }
+        if ($request->max_price) {
+            $products = $products->where('price', '<=', $request->max_price);
+        }
+        if ($request->brand_id) {
+            $products = $products->where('brand_id', $request->brand_id);
+        }
+        if ($request->category_id) {
+            $products = $products->where('category_id', $request->category_id);
+        }
+
+        $products = $products->where('is_active', true)->paginate(10);
+
         return new ProductCollection($products);
     }
 
     public function myProducts()
     {
-        $user_id = auth()->user()->id;
-        $products = Product::where('user_id', $user_id)->orderBy('id', 'desc')->paginate(10);
+        $user = auth()->user();
+
+        $user_id = $user->id;
+        $products = Product::where('products.user_id', $user_id)
+            ->where('products.is_active', true)
+            ->orderBy('id', 'desc')->paginate(10);
         return new ProductCollection($products);
     }
 
@@ -63,15 +90,7 @@ class ProductController extends Controller
 
     public function show(Product $product)
     {
-        $user_id = auth()->user()->id;
-
-        if ($product->user_id != $user_id) {
-            return response()->json([
-                'success' => false,
-                'message' => "You don't have permission to view this product"
-            ], 200);
-        }
-
+        $product = Product::where('products.id', $product->id)->first();
         return new ProductResource($product);
     }
 
@@ -119,25 +138,22 @@ class ProductController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => "You don't have permission to delete this product"
-            ], 200);
+            ], 401);
         }
 
         DB::beginTransaction();
         try {
-            foreach ($product->product_genders as $product_gender) {
-                $product_gender->delete();
-            }
-            foreach ($product->product_sizes as $product_size) {
-                $product_size->delete();
-            }
-            $product->delete();
+
+            $product->update([
+                'is_active' => false,
+            ]);
 
             DB::commit();
 
-            return [
+            return response()->json([
                 'success' => true,
                 'message' => 'Product deleted successfully'
-            ];
+            ], 200);
         } catch (Throwable $e) {
             DB::rollBack();
 
@@ -185,6 +201,21 @@ class ProductController extends Controller
             'brands' => $brands,
             'categories' => $categories,
             'sizes' => $sizes,
+        ];
+    }
+
+    public function filterData()
+    {
+        $genders = Gender::select('id', 'name')->get();
+        $brands = Brand::select('id', 'name')->get();
+        $categories = Category::select('id', 'name')->get();
+        $sizes = Size::select('id', 'name')->get();
+
+        return [
+            'genders' => array_merge([['id' => null, 'name' => 'All genders']], $genders->toArray()),
+            'brands' => array_merge([['id' => null, 'name' => 'All brands']], $brands->toArray()),
+            'categories' => array_merge([['id' => null, 'name' => 'All categories']], $categories->toArray()),
+            'sizes' => array_merge([['id' => null, 'name' => 'All sizes']], $sizes->toArray()),
         ];
     }
 }
